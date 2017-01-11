@@ -1,0 +1,72 @@
+# ----------------------------------------------------------------------                                                                                                                                                                                                                       
+# MySQL backup script                                                                                                                                                                                                                                                                          
+# Back up individual databases except those which are in the exclude list.                                                                                                                                                                                                                     
+# Log sanity checks on backed-up data.                                                                                                                                                                                                                                                         
+#                                                                                                                                                                                                                                                                                              
+# Steve Gallo
+# Last Modified: 2014-01-01
+# ----------------------------------------------------------------------
+#
+# Grant access to the appropriate user and password:
+# GRANT event,select,lock tables,show databases,show view ON *.* TO `backer`@`localhost` IDENTIFIED BY '';
+
+USER='backer'
+PASSWD=''
+LOG="/var/log/mysql-backup.log"
+MYSQL_DUMP="/usr/bin/mysqldump"
+DUMP_DIR="/data/mysqldumps"
+
+# Regex for excluding some databases from backup
+EXCLUDE='^information_schema|^performance_schema|^test'
+
+echo >>$LOG 
+echo -e "["`date "+%Y-%m-%d %H:%M:%S"`"] Starting MySQL backup" >>$LOG
+ 
+# Make sure that the log file is readable by all
+chmod 0644 $LOG
+ 
+# Ensure that MySQL daemon is running
+ 
+mysqladmin -u${USER} -p${PASSWD} status | grep -qi "Uptime" &>>$LOG
+ 
+if [ 0 -ne $? ]; then
+    echo -e "["`date`"]\nMysql not running" >>$LOG
+    exit 1
+fi
+ 
+# Create the dump directory if it doesn't already exist
+ 
+if [ ! -d $DUMP_DIR ]; then
+    /bin/mkdir -v -p $DUMP_DIR &>$LOG
+    if [ 0 -ne $? ]; then
+        echo "Could not create dump directory '$DUMP_DIR'" >>$LOG
+        exit 1
+    fi
+fi
+ 
+# Retrieve list of MySQL databases to backup
+ 
+DB_LIST=`mysql -u${USER} -p${PASSWD} -N -e "show databases"|egrep -v "$EXCLUDE" | tr "\n" " "`
+ 
+if [ 0 -ne $? ]; then
+    echo "Error retreiving database list" >>$LOG
+    exit 1
+fi
+ 
+# Perform the backups
+
+for db in $DB_LIST; do
+    FILE="$DUMP_DIR/${db}-dump.sql"
+    echo -e "["`date "+%Y-%m-%d %H:%M:%S"`"] Backing up '$db' to $FILE" >>$LOG
+    $MYSQL_DUMP -u${USER} -p${PASSWD} --routines --triggers --opt --databases $db 2>>$LOG >$FILE
+    if [ 0 -ne $? ]; then
+        echo "Error dumping database '$db'" >>$LOG
+    else
+        /bin/chmod 640 $FILE 2>>$LOG
+        ls -lh $FILE >>$LOG
+    fi
+done
+ 
+echo -e "["`date "+%Y-%m-%d %H:%M:%S"`"] Finished MySQL backup" >>$LOG
+
+exit 0
