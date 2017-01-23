@@ -1,0 +1,13 @@
+/data/mysqldumps/*.sql
+{
+   rotate 5
+   daily
+   compress
+   missingok
+   dateext
+}
+ 
+/var/log/mysql-backup.log
+{
+   missingok
+}
